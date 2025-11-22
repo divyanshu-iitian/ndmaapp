@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "Prashikshak",
+    "slug": "prashikshak",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./prashikshak.png",
+    "userInterfaceStyle": "light",
+  "newArchEnabled": false,
+    "splash": {
+      "image": "./prashikshak.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1A365D"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ggu.prashikshak",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "This app needs your location to show training sites near you and mark training locations on the map.",
+        "NSLocationAlwaysUsageDescription": "This app needs your location to track training activities."
+      }
+    },
+    "android": {
+      "package": "com.ggu.prashikshak",
+      "adaptiveIcon": {
+        "foregroundImage": "./prashikshak.png",
+        "backgroundColor": "#1A365D"
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA"
+      ]
+    },
+    "web": {
+      "favicon": "./prashikshak.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "37c63401-a8fb-4168-b905-13e33f0315a6"
+      }
+    },
+    "owner": "divyanshu12309"
+  }
+}
