@@ -3,14 +3,14 @@ import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityInd
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, Camera } from 'expo-camera';
-// import * as Location from 'expo-location'; // DISABLED - Module removed
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import AttendanceService from '../services/AttendanceService';
+import eventService from '../services/EventService';
 
 export default function JoinAttendanceScreen({ route, navigation }) {
   const user = route?.params?.user || { name: 'Trainee', _id: 'temp_id' };
-  
+
   const [hasPermission, setHasPermission] = useState(null);
   const [scanned, setScanned] = useState(false);
   const [manualCode, setManualCode] = useState('');
@@ -26,44 +26,51 @@ export default function JoinAttendanceScreen({ route, navigation }) {
     setHasPermission(status === 'granted');
   };
 
-  const handleBarCodeScanned = ({ type, data }) => {
-    setScanned(true);
-    setScannerActive(false);
-    markAttendance(data);
-  };
-
-  const markAttendance = async (sessionToken) => {
-    if (!sessionToken || sessionToken.trim() === '') {
-      Alert.alert('Error', 'Invalid session code');
+  const processCode = async (code) => {
+    if (!code || code.trim() === '') {
+      Alert.alert('Error', 'Invalid code');
       setScanned(false);
       setScannerActive(true);
       return;
     }
 
     setLoading(true);
+    const cleanCode = code.trim();
 
-    // Get location
-    /* DISABLED - Location module removed
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    let locationData = null;
-    if (status === 'granted') {
-      const loc = await Location.getCurrentPositionAsync({});
-      locationData = {
-        type: 'Point',
-        coordinates: [loc.coords.longitude, loc.coords.latitude],
-        accuracy: loc.coords.accuracy
-      };
+    try {
+      // 1. Try to join as an Event
+      console.log('Trying to join event with code:', cleanCode);
+      const eventResult = await eventService.joinEventByCode(cleanCode);
+
+      if (eventResult.success) {
+        setLoading(false);
+        Alert.alert('Success', 'Joined Event Successfully!', [
+          { text: 'View Details', onPress: () => navigation.replace('TraineeEventDetail', { event: eventResult.event }) }
+        ]);
+        return;
+      } else if (eventResult.message === 'Already joined this event') {
+        setLoading(false);
+        Alert.alert('Info', 'You have already joined this event.');
+        return;
+      }
+
+      // 2. If Event Join failed, try Legacy Attendance
+      console.log('Event join failed, trying legacy attendance...');
+      markLegacyAttendance(cleanCode);
+
+    } catch (error) {
+      console.log('Error processing code:', error);
+      markLegacyAttendance(cleanCode);
     }
-    */
-    
-    // Use default location
+  };
+
+  const markLegacyAttendance = async (sessionToken) => {
     let locationData = {
       type: 'Point',
-      coordinates: [82.1391, 22.0797], // Default: Bilaspur, Chhattisgarh
+      coordinates: [82.1391, 22.0797], // Default
       accuracy: 10
     };
 
-    // Get device metadata
     const deviceMeta = {
       device_id: Constants.deviceId || 'unknown',
       device_name: Device.deviceName || 'Unknown Device',
@@ -72,7 +79,7 @@ export default function JoinAttendanceScreen({ route, navigation }) {
     };
 
     const res = await AttendanceService.markAttendance(
-      sessionToken.trim(),
+      sessionToken,
       'gps',
       deviceMeta,
       locationData
@@ -82,19 +89,14 @@ export default function JoinAttendanceScreen({ route, navigation }) {
 
     if (res.success) {
       Alert.alert(
-        'Success! ✅',
-        `Your attendance has been marked successfully!\n\nTime: ${new Date().toLocaleTimeString()}`,
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack()
-          }
-        ]
+        'Attendance Marked ✅',
+        `Legacy/Wi-Fi Attendance marked successfully!\n\nTime: ${new Date().toLocaleTimeString()}`,
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
     } else {
       Alert.alert(
         'Failed',
-        res.error || 'Could not mark attendance. Please try again or contact trainer.',
+        res.error || 'Could not join event or mark attendance.',
         [
           {
             text: 'Try Again',
@@ -110,12 +112,14 @@ export default function JoinAttendanceScreen({ route, navigation }) {
     }
   };
 
+  const handleBarCodeScanned = ({ type, data }) => {
+    setScanned(true);
+    setScannerActive(false);
+    processCode(data);
+  };
+
   const handleManualSubmit = () => {
-    if (manualCode.trim() === '') {
-      Alert.alert('Error', 'Please enter session code');
-      return;
-    }
-    markAttendance(manualCode);
+    processCode(manualCode);
   };
 
   if (hasPermission === null) {
@@ -136,7 +140,7 @@ export default function JoinAttendanceScreen({ route, navigation }) {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color="#111827" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Join Attendance</Text>
+          <Text style={styles.headerTitle}>Join Event</Text>
           <View style={{ width: 24 }} />
         </View>
         <View style={styles.errorContainer}>
@@ -160,12 +164,12 @@ export default function JoinAttendanceScreen({ route, navigation }) {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#111827" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Join Attendance</Text>
+        <Text style={styles.headerTitle}>Join Event</Text>
         <TouchableOpacity onPress={() => setScannerActive(!scannerActive)}>
-          <Ionicons 
-            name={scannerActive ? "keypad" : "qr-code"} 
-            size={24} 
-            color="#0047BA" 
+          <Ionicons
+            name={scannerActive ? "keypad" : "qr-code"}
+            size={24}
+            color="#0047BA"
           />
         </TouchableOpacity>
       </View>
@@ -173,7 +177,7 @@ export default function JoinAttendanceScreen({ route, navigation }) {
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#0047BA" />
-          <Text style={styles.loadingText}>Marking attendance...</Text>
+          <Text style={styles.loadingText}>Processing...</Text>
         </View>
       ) : scannerActive ? (
         <>
@@ -195,10 +199,10 @@ export default function JoinAttendanceScreen({ route, navigation }) {
             <Ionicons name="qr-code-outline" size={48} color="#0047BA" />
             <Text style={styles.instructionTitle}>Scan QR Code</Text>
             <Text style={styles.instructionText}>
-              Position the QR code within the frame to scan
+              Scan event code or attendance session QR
             </Text>
             {scanned && (
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.rescanBtn}
                 onPress={() => {
                   setScanned(false);
@@ -216,15 +220,15 @@ export default function JoinAttendanceScreen({ route, navigation }) {
           {/* Manual Entry */}
           <View style={styles.manualContainer}>
             <Ionicons name="key" size={64} color="#0047BA" />
-            <Text style={styles.manualTitle}>Enter Session Code</Text>
+            <Text style={styles.manualTitle}>Enter Code</Text>
             <Text style={styles.manualSubtitle}>
-              Can't scan? Enter the code shown by your trainer
+              Enter Event Code (e.g. NDMA-TRNG-1234) or Session ID
             </Text>
 
             <View style={styles.inputContainer}>
               <TextInput
                 style={styles.codeInput}
-                placeholder="Enter session code"
+                placeholder="Enter Code"
                 placeholderTextColor="#9CA3AF"
                 value={manualCode}
                 onChangeText={setManualCode}
@@ -233,15 +237,15 @@ export default function JoinAttendanceScreen({ route, navigation }) {
               />
             </View>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.submitBtn}
               onPress={handleManualSubmit}
             >
               <Ionicons name="checkmark-circle" size={22} color="#FFF" />
-              <Text style={styles.submitBtnText}>Mark Attendance</Text>
+              <Text style={styles.submitBtnText}>Submit</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.switchToScanBtn}
               onPress={() => {
                 setScannerActive(true);

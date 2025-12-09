@@ -69,26 +69,61 @@ const TrainerRegisterScreen = ({ navigation }) => {
       if (result.success) {
         console.log('✅ Registration successful:', result.user.email);
         
-        // Save token and user data (MongoDBService already persisted 'token' and 'userData')
-        const userData = { userId: result.user.id, name: result.user.name, email: result.user.email, role: result.user.role || 'trainer' };
-        await AsyncStorage.setItem('userData', JSON.stringify(userData));
-        await AsyncStorage.setItem('userId', result.user.id); // backward compatibility
-        await AsyncStorage.setItem('userName', result.user.name);
-        await AsyncStorage.setItem('userEmail', result.user.email);
-        await AsyncStorage.setItem('userRole', result.user.role || 'trainer');
-        
-        Alert.alert('Success', `Welcome, ${result.user.name}! Your account has been created.`, [
-          { 
-            text: 'OK', 
-            onPress: () => {
-              // Navigate to trainer dashboard
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'TrainerDashboard' }],
-              });
+        // Check if verification is required
+        if (result.next === 'pending') {
+          // Account needs admin approval
+          Alert.alert(
+            'Account Under Review',
+            'Your account has been created and is pending verification. You will be notified once approved.',
+            [
+              { 
+                text: 'OK', 
+                onPress: () => {
+                  navigation.navigate('VerificationPending', {
+                    verificationStatus: 'pending',
+                    notes: ''
+                  });
+                }
+              }
+            ]
+          );
+        } else if (result.next === 'verify') {
+          // Email OTP verification required
+          Alert.alert(
+            'Verify Your Email',
+            'A verification code has been sent to your email.',
+            [
+              { 
+                text: 'OK', 
+                onPress: () => {
+                  navigation.navigate('OTPVerification', {
+                    email: email.trim().toLowerCase()
+                  });
+                }
+              }
+            ]
+          );
+        } else {
+          // Legacy flow - direct login (for backward compatibility)
+          const userData = { userId: result.user.id, name: result.user.name, email: result.user.email, role: result.user.role || 'trainer' };
+          await AsyncStorage.setItem('userData', JSON.stringify(userData));
+          await AsyncStorage.setItem('userId', result.user.id);
+          await AsyncStorage.setItem('userName', result.user.name);
+          await AsyncStorage.setItem('userEmail', result.user.email);
+          await AsyncStorage.setItem('userRole', result.user.role || 'trainer');
+          
+          Alert.alert('Success', `Welcome, ${result.user.name}! Your account has been created.`, [
+            { 
+              text: 'OK', 
+              onPress: () => {
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'TrainerDashboard' }],
+                });
+              }
             }
-          }
-        ]);
+          ]);
+        }
       } else {
         console.log('❌ Registration failed:', result.error);
         Alert.alert('Registration Failed', result.error || 'Unable to create account');

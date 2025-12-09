@@ -10,13 +10,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const ReportsScreen = ({ navigation }) => {
   const [reports, setReports] = useState([]);
+  const [events, setEvents] = useState([]); // New state for events
   const [refreshing, setRefreshing] = useState(false);
   const [selectedReport, setSelectedReport] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showSendModal, setShowSendModal] = useState(false);
   const [selectedOrg, setSelectedOrg] = useState('NDMA');
   const [loading, setLoading] = useState(false);
-  
+
   // Image viewer states
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
@@ -25,7 +26,6 @@ const ReportsScreen = ({ navigation }) => {
   useEffect(() => {
     loadReports();
     const unsubscribe = navigation.addListener('focus', () => {
-      console.log('🔄 Reports screen focused - reloading...');
       loadReports();
     });
     return unsubscribe;
@@ -33,25 +33,27 @@ const ReportsScreen = ({ navigation }) => {
 
   const loadReports = async () => {
     setLoading(true);
-    console.log('--- ReportsScreen: Starting to load reports ---');
     try {
-      console.log('--- ReportsScreen: Calling ReportsService.getUserReports (token-based) ---');
-      const result = await ReportsService.getUserReports();
+      const [reportsResult, eventsResult] = await Promise.all([
+        ReportsService.getUserReports(),
+        ReportsService.getMyEvents('published') // Fetch published events
+      ]);
 
-      if (result.success) {
-        console.log(`✅ ReportsScreen: Successfully fetched ${result.reports.length} reports from cloud.`);
-        setReports(result.reports);
+      if (reportsResult.success) {
+        setReports(reportsResult.reports);
       } else {
-        console.error('❌ ReportsScreen: Failed to fetch reports from cloud.', result.error);
-        Alert.alert('Error', result.error || 'Could not load reports from the cloud.');
         setReports([]);
       }
+
+      if (eventsResult.success) {
+        setEvents(eventsResult.events);
+      } else {
+        setEvents([]);
+      }
     } catch (error) {
-      console.error('❌ ReportsScreen: A critical error occurred in loadReports.', error);
       Alert.alert('Critical Error', 'An unexpected error occurred while loading reports.');
       setReports([]);
     } finally {
-      console.log('--- ReportsScreen: Finished loading reports ---');
       setLoading(false);
       setRefreshing(false);
     }
@@ -67,6 +69,10 @@ const ReportsScreen = ({ navigation }) => {
     setShowDetailModal(true);
   };
 
+  const viewEvent = (event) => {
+    navigation.navigate('TrainerEventDetail', { event });
+  };
+
   const deleteReport = async (reportId) => {
     Alert.alert('Delete Report', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
@@ -77,7 +83,7 @@ const ReportsScreen = ({ navigation }) => {
           try {
             setLoading(true);
             const result = await ReportsService.deleteReport(reportId);
-            
+
             if (result.success) {
               const updated = reports.filter(r => r._id !== reportId);
               setReports(updated);
@@ -125,7 +131,7 @@ const ReportsScreen = ({ navigation }) => {
         fileUri
       );
       const { uri } = await downloadResumable.downloadAsync();
-      
+
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
         await Sharing.shareAsync(uri);
@@ -150,9 +156,9 @@ const ReportsScreen = ({ navigation }) => {
     try {
       const fileName = `training_image_${Date.now()}.jpg`;
       const fileUri = FileSystem.documentDirectory + fileName;
-      
+
       const { uri } = await FileSystem.downloadAsync(imageUrl, fileUri);
-      
+
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
         await Sharing.shareAsync(uri, {
@@ -176,35 +182,52 @@ const ReportsScreen = ({ navigation }) => {
           <Ionicons name="arrow-back" size={24} color="#1F2937" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Training Reports</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('AddTraining')}>
-          <Ionicons name="add-circle" size={28} color="#10B981" />
+        <TouchableOpacity onPress={() => {
+          Alert.alert('Create New', 'What would you like to create?', [
+            { text: 'Upcoming Event', onPress: () => navigation.navigate('CreateEvent') },
+            { text: 'Past Report', onPress: () => navigation.navigate('AddTraining') },
+            { text: 'Cancel', style: 'cancel' }
+          ]);
+        }}>
+          <Ionicons name="add-circle" size={28} color="#0056D2" />
         </TouchableOpacity>
       </View>
 
-      <ScrollView 
-        showsVerticalScrollIndicator={false} 
+      <ScrollView
+        showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#10B981']} />}
       >
-        {reports.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="document-text-outline" size={80} color="#D1D5DB" />
-            <Text style={styles.emptyText}>No reports yet</Text>
+        {/* Active Events Section */}
+        <View style={styles.sectionHeaderContainer}>
+          <Text style={styles.sectionHeaderText}>Published Events</Text>
+        </View>
+
+        {events.length === 0 ? (
+          <View style={styles.emptyStateCompact}>
+            <Text style={styles.emptyTextCompact}>No published events found.</Text>
           </View>
         ) : (
           <View style={styles.reportsList}>
-            {reports.map((report, index) => (
-              <TouchableOpacity 
-                key={report.id || index} 
-                style={styles.reportCard}
-                onPress={() => viewReport(report)}
+            {events.map((event, index) => (
+              <TouchableOpacity
+                key={event._id || `evt-${index}`}
+                style={[styles.reportCard, styles.eventCard]}
+                onPress={() => viewEvent(event)}
               >
                 <View style={styles.reportHeader}>
+                  <View style={styles.eventIconContainer}>
+                    <Ionicons name="calendar" size={24} color="#0056D2" />
+                  </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.reportTitle}>{report.trainingType || 'Training'}</Text>
-                    <Text style={styles.reportDate}> {report.date}</Text>
-                    {report.location && (
-                      <Text style={styles.reportLocation}> {report.location.name || 'Location'}</Text>
-                    )}
+                    <Text style={styles.reportTitle}>{event.title || 'Untitled Event'}</Text>
+                    <Text style={styles.eventCode}>Code: {event.code}</Text>
+                    <Text style={styles.reportDate}>
+                      {new Date(event.startDate).toLocaleDateString()} - {new Date(event.endDate).toLocaleDateString()}
+                    </Text>
+                    <View style={styles.statRow}>
+                      <Ionicons name="people" size={12} color="#666" />
+                      <Text style={styles.statText}>{event.participantCount} Participants</Text>
+                    </View>
                   </View>
                   <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
                 </View>
@@ -212,6 +235,8 @@ const ReportsScreen = ({ navigation }) => {
             ))}
           </View>
         )}
+
+
       </ScrollView>
 
       {/* Report Detail Modal */}
@@ -258,7 +283,7 @@ const ReportsScreen = ({ navigation }) => {
                   <View style={styles.detailSection}>
                     <Text style={styles.detailLabel}>Effectiveness</Text>
                     <Text style={[styles.detailValue, { color: '#10B981', fontWeight: '600' }]}>
-                       {selectedReport.effectiveness}
+                      {selectedReport.effectiveness}
                     </Text>
                   </View>
                 )}
@@ -274,7 +299,7 @@ const ReportsScreen = ({ navigation }) => {
                   <View style={styles.detailSection}>
                     <Text style={styles.detailLabel}>Location</Text>
                     <Text style={styles.detailValue}>
-                       {selectedReport.location.name || 'Training Location'}
+                      {selectedReport.location.name || 'Training Location'}
                     </Text>
                     <Text style={styles.detailCoords}>
                       {selectedReport.location.latitude.toFixed(4)}, {selectedReport.location.longitude.toFixed(4)}
@@ -287,8 +312,8 @@ const ReportsScreen = ({ navigation }) => {
                     <Text style={styles.detailLabel}>Images ({selectedReport.photos.length})</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesGallery}>
                       {selectedReport.photos.map((img, idx) => (
-                        <TouchableOpacity 
-                          key={idx} 
+                        <TouchableOpacity
+                          key={idx}
                           onPress={() => openImageViewer(selectedReport.photos, idx)}
                         >
                           <Image source={{ uri: img }} style={styles.galleryImage} />
@@ -304,10 +329,10 @@ const ReportsScreen = ({ navigation }) => {
                     {selectedReport.documents.map((file, idx) => (
                       <View key={idx} style={styles.fileItem}>
                         <View style={styles.fileIcon}>
-                          <Ionicons 
-                            name={file.type && file.type.includes('pdf') ? 'document' : 'document-text'} 
-                            size={24} 
-                            color="#10B981" 
+                          <Ionicons
+                            name={file.type && file.type.includes('pdf') ? 'document' : 'document-text'}
+                            size={24}
+                            color="#10B981"
                           />
                         </View>
                         <View style={{ flex: 1 }}>
@@ -333,7 +358,7 @@ const ReportsScreen = ({ navigation }) => {
                     <Ionicons name="create" size={20} color="#FFFFFF" />
                     <Text style={styles.actionButtonText}>Edit Report</Text>
                   </TouchableOpacity>
-                  
+
                   <TouchableOpacity
                     style={[styles.actionButton, { backgroundColor: '#EF4444' }]}
                     onPress={() => deleteReport(selectedReport._id)}
@@ -341,7 +366,7 @@ const ReportsScreen = ({ navigation }) => {
                     <Ionicons name="trash" size={20} color="#FFFFFF" />
                     <Text style={styles.actionButtonText}>Delete</Text>
                   </TouchableOpacity>
-                
+
                   <TouchableOpacity
                     style={[styles.actionButton, { backgroundColor: '#F59E0B' }]}
                     onPress={() => { setShowSendModal(true); setSelectedOrg(selectedReport.sentToOrganization || 'NDMA'); }}
@@ -364,7 +389,7 @@ const ReportsScreen = ({ navigation }) => {
         onRequestClose={() => setShowImageViewer(false)}
       >
         <View style={styles.imageViewerContainer}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.imageViewerClose}
             onPress={() => setShowImageViewer(false)}
           >
@@ -380,8 +405,8 @@ const ReportsScreen = ({ navigation }) => {
           >
             {currentImages.map((img, idx) => (
               <View key={idx} style={styles.imageViewerPage}>
-                <Image 
-                  source={{ uri: img }} 
+                <Image
+                  source={{ uri: img }}
                   style={styles.fullImage}
                   resizeMode="contain"
                 />
@@ -390,7 +415,7 @@ const ReportsScreen = ({ navigation }) => {
           </ScrollView>
 
           <View style={styles.imageViewerActions}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.imageActionButton}
               onPress={() => downloadImage(currentImages[selectedImageIndex])}
             >
@@ -402,7 +427,7 @@ const ReportsScreen = ({ navigation }) => {
               {selectedImageIndex + 1} / {currentImages.length}
             </Text>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.imageActionButton}
               onPress={() => {
                 Sharing.shareAsync(currentImages[selectedImageIndex]);
@@ -471,25 +496,25 @@ const ReportsScreen = ({ navigation }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F9FAFB' },
-  header: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'space-between', 
-    paddingHorizontal: 16, 
-    paddingVertical: 12, 
-    backgroundColor: '#FFFFFF', 
-    borderBottomWidth: 1, 
-    borderBottomColor: '#E5E7EB' 
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB'
   },
   headerTitle: { fontSize: 18, fontWeight: '600', color: '#1F2937' },
   emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
   emptyText: { fontSize: 18, fontWeight: '600', color: '#6B7280', marginTop: 16 },
   reportsList: { padding: 16 },
-  reportCard: { 
-    backgroundColor: '#FFFFFF', 
-    borderRadius: 12, 
-    padding: 16, 
-    marginBottom: 12, 
+  reportCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -663,6 +688,55 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  sectionHeaderContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#F3F4F6',
+  },
+  sectionHeaderText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#4B5563',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  eventCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#0056D2',
+  },
+  eventIconContainer: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#EBF8FF',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  eventCode: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#0056D2',
+    marginBottom: 2,
+  },
+  statRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  statText: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 4,
+  },
+  emptyStateCompact: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  emptyTextCompact: {
+    color: '#999',
+    fontStyle: 'italic',
+  }
 });
 
 export default ReportsScreen;

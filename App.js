@@ -68,9 +68,25 @@ import AuthorityAnalyticsScreen from './src/screens/AuthorityAnalyticsScreen';
 import AuthorityMapScreen from './src/screens/AuthorityMapScreen';
 import AuthorityLiveMapScreen from './src/screens/AuthorityLiveMapScreen';
 import TraineeHomeScreen from './src/screens/TraineeHomeScreen';
+import VerificationPendingScreen from './src/screens/VerificationPendingScreen';
+import OTPVerificationScreen from './src/screens/OTPVerificationScreen';
 import TraineeMapScreen from './src/screens/TraineeMapScreen';
 import AttendanceSessionScreen from './src/screens/AttendanceSessionScreen';
 import JoinAttendanceScreen from './src/screens/JoinAttendanceScreen';
+
+// New Auth Screens (2FA + Verification)
+import NewAuthLoginScreen from './src/screens/NewAuthLoginScreen';
+import NewAuthRegisterScreen from './src/screens/NewAuthRegisterScreen';
+import Setup2FAScreen from './src/screens/Setup2FAScreen';
+import Enter2FAScreen from './src/screens/Enter2FAScreen';
+import TrainerVerificationPendingScreen from './src/screens/TrainerVerificationPendingScreen';
+import DocumentUploadScreen from './src/screens/DocumentUploadScreen';
+import WifiAttendanceDashboard from './src/screens/WifiAttendanceDashboard';
+import OrganizationVerificationPendingScreen from './src/screens/OrganizationVerificationPendingScreen';
+import TrainerEventDetailScreen from './src/screens/TrainerEventDetailScreen';
+import TraineeEventDetailScreen from './src/screens/TraineeEventDetailScreen';
+import CreateEventScreen from './src/screens/CreateEventScreen';
+import EventDayReportScreen from './src/screens/EventDayReportScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -80,7 +96,8 @@ const MainTabs = ({ route, navigation }) => {
 
   // Safety check for user data
   React.useEffect(() => {
-    if (!user || !user.id || !user.role) {
+    const hasId = user && (user.id || user._id);
+    if (!user || !hasId || !user.role) {
       if (__DEV__) console.error('MainTabs: Invalid user data', user);
       Alert.alert(
         'Session Error',
@@ -103,7 +120,8 @@ const MainTabs = ({ route, navigation }) => {
   }, [user]);
 
   // Show loading state while checking
-  if (!user || !user.id || !user.role) {
+  const hasId = user && (user.id || user._id);
+  if (!user || !hasId || !user.role) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F7FAFC' }}>
         <Ionicons name="alert-circle" size={48} color="#EF4444" />
@@ -215,20 +233,24 @@ export default function App() {
     try {
       setDebugMessage('2. checkSession started. Checking AsyncStorage...');
       const storedUser = await AsyncStorage.getItem('user');
-      
-      if (storedUser) {
+      const storedToken = await AsyncStorage.getItem('token');
+
+      if (storedUser && storedToken) {
         setDebugMessage('3. User found in AsyncStorage. Parsing...');
         const parsedUser = JSON.parse(storedUser);
-        setUser(parsedUser);
-        setDebugMessage('4. User state set. Ready to navigate to MainTabs.');
+        setDebugMessage('4. User session valid. Ready to navigate to MainTabs.');
+        setInitialRoute('MainTabs');
+        setInitialParams({ user: parsedUser });
       } else {
-        setDebugMessage('3. No user in AsyncStorage. Ready to navigate to Auth.');
-        setUser(null);
+        setDebugMessage('3. No user in AsyncStorage. Ready to navigate to NewAuthLogin.');
+        setInitialRoute('NewAuthLogin');
+        setInitialParams(null);
       }
     } catch (error) {
       setDebugMessage(`Error in checkSession: ${error.message}`);
       console.error('Failed to load user from session:', error);
-      setUser(null);
+      setInitialRoute('NewAuthLogin');
+      setInitialParams(null);
     } finally {
       setDebugMessage('5. checkSession finished. Setting isReady to true.');
       setIsReady(true);
@@ -253,9 +275,9 @@ export default function App() {
     <ErrorBoundary>
       <StatusBar style="dark" backgroundColor="#FFFFFF" />
       <NavigationContainer>
-        <Stack.Navigator 
+        <Stack.Navigator
           initialRouteName={initialRoute}
-          screenOptions={{ 
+          screenOptions={{
             headerShown: false,
             gestureEnabled: true,
             cardStyleInterpolator: ({ current }) => ({
@@ -265,19 +287,70 @@ export default function App() {
             }),
           }}
         >
+          {/* New Auth Flow - Primary Entry Point */}
+          <Stack.Screen
+            name="NewAuthLogin"
+            component={NewAuthLoginScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="NewAuthRegister"
+            component={NewAuthRegisterScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Setup2FA"
+            component={Setup2FAScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Enter2FA"
+            component={Enter2FAScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="DocumentUpload"
+            component={DocumentUploadScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="TrainerVerificationPending"
+            component={TrainerVerificationPendingScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="OrganizationVerificationPending"
+            component={OrganizationVerificationPendingScreen}
+            options={{ headerShown: false }}
+          />
+
+          {/* Old Auth Flow (Kept for backward compatibility) */}
           <Stack.Screen name="Auth" component={AuthScreen} />
-          <Stack.Screen 
-            name="MainTabs" 
+
+          {/* Old Verification Screens (keep for backward compatibility) */}
+          <Stack.Screen
+            name="VerificationPending"
+            component={VerificationPendingScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="OTPVerification"
+            component={OTPVerificationScreen}
+            options={{ headerShown: false }}
+          />
+
+          <Stack.Screen
+            name="MainTabs"
             component={MainTabs}
             initialParams={initialParams}
           />
-          <Stack.Screen 
-            name="Chat" 
-            component={ChatScreen} 
-            options={{ 
+          <Stack.Screen
+            name="Chat"
+            component={ChatScreen}
+            options={{
               headerShown: true,
               headerTitle: 'Data Analytics',
-              headerStyle: { 
+              headerStyle: {
                 backgroundColor: '#1A365D',
                 elevation: 0,
                 shadowOpacity: 0,
@@ -285,7 +358,7 @@ export default function App() {
                 borderBottomColor: '#2C5282',
               },
               headerTintColor: '#FFFFFF',
-              headerTitleStyle: { 
+              headerTitleStyle: {
                 fontWeight: '600',
                 fontSize: 18,
                 letterSpacing: 0.3,
@@ -293,13 +366,13 @@ export default function App() {
               headerBackTitleVisible: false,
             }}
           />
-          <Stack.Screen 
-            name="Analytics" 
-            component={AnalyticsScreen} 
-            options={{ 
+          <Stack.Screen
+            name="Analytics"
+            component={AnalyticsScreen}
+            options={{
               headerShown: true,
               headerTitle: 'Training Analytics',
-              headerStyle: { 
+              headerStyle: {
                 backgroundColor: '#1A365D',
                 elevation: 0,
                 shadowOpacity: 0,
@@ -307,7 +380,7 @@ export default function App() {
                 borderBottomColor: '#2C5282',
               },
               headerTintColor: '#FFFFFF',
-              headerTitleStyle: { 
+              headerTitleStyle: {
                 fontWeight: '600',
                 fontSize: 18,
                 letterSpacing: 0.3,
@@ -315,24 +388,50 @@ export default function App() {
               headerBackTitleVisible: false,
             }}
           />
-          <Stack.Screen 
-            name="AttendanceSession" 
-            component={AttendanceSessionScreen} 
+          <Stack.Screen
+            name="AttendanceSession"
+            component={AttendanceSessionScreen}
             options={{ headerShown: false }}
           />
-          <Stack.Screen 
-            name="JoinAttendance" 
-            component={JoinAttendanceScreen} 
+          <Stack.Screen
+            name="JoinAttendance"
+            component={JoinAttendanceScreen}
             options={{ headerShown: false }}
           />
-          <Stack.Screen 
-            name="AuthorityAnalytics" 
-            component={AuthorityAnalyticsScreen} 
+          <Stack.Screen
+            name="AuthorityAnalytics"
+            component={AuthorityAnalyticsScreen}
             options={{ headerShown: false }}
           />
-          <Stack.Screen 
-            name="AuthorityLiveMap" 
-            component={AuthorityLiveMapScreen} 
+          <Stack.Screen
+            name="AuthorityLiveMap"
+            component={AuthorityLiveMapScreen}
+            options={{ headerShown: false }}
+          />
+          {/* Wi-Fi Attendance Dashboard */}
+          <Stack.Screen
+            name="WifiAttendanceDashboard"
+            component={WifiAttendanceDashboard}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="TrainerEventDetail"
+            component={TrainerEventDetailScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="TraineeEventDetail"
+            component={TraineeEventDetailScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="CreateEvent"
+            component={CreateEventScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="EventDayReport"
+            component={EventDayReportScreen}
             options={{ headerShown: false }}
           />
         </Stack.Navigator>

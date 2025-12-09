@@ -29,7 +29,22 @@ class AuthService {
   // Get stored access token
   async getAccessToken() {
     try {
-      return await AsyncStorage.getItem('accessToken');
+      // 1. Check NEW system token first (authToken)
+      const authToken = await AsyncStorage.getItem('authToken');
+      if (authToken) {
+        // console.log('🔑 AuthService: Using authToken (New System)');
+        return authToken;
+      }
+
+      // 2. Fallback to OLD system token (accessToken)
+      const token = await AsyncStorage.getItem('accessToken');
+      if (token) {
+        // console.log('🔑 AuthService: Using accessToken (Legacy)');
+        return token;
+      }
+
+      console.log('⚠️ AuthService: No token found');
+      return null;
     } catch (error) {
       console.error('Error getting access token:', error);
       return null;
@@ -59,38 +74,11 @@ class AuthService {
 
   // Refresh access token using refresh token
   async refreshAccessToken() {
-    try {
-      const refreshToken = await this.getRefreshToken();
-      
-      if (!refreshToken) {
-        throw new Error('No refresh token available');
-      }
-
-      console.log('🔄 Refreshing access token...');
-
-      const response = await fetch(`${this.baseURL}/api/auth/refresh-token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ refreshToken }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        await AsyncStorage.setItem('accessToken', data.accessToken);
-        console.log('✅ Access token refreshed successfully');
-        return data.accessToken;
-      } else {
-        throw new Error(data.error || 'Token refresh failed');
-      }
-    } catch (error) {
-      console.error('❌ Token refresh failed:', error);
-      // Clear tokens and force re-login
-      await this.clearTokens();
-      throw error;
-    }
+    // The new backend system currently handles session expiration via re-login
+    // There is no explicit refresh token flow in the current router inspection
+    console.log('⚠️ Token refresh not supported in new backend. Forcing logout.');
+    await this.clearTokens();
+    throw new Error('Session expired. Please login again.');
   }
 
   // Make authenticated API call with automatic token refresh
@@ -142,6 +130,7 @@ class AuthService {
       await AsyncStorage.removeItem('accessToken');
       await AsyncStorage.removeItem('refreshToken');
       await AsyncStorage.removeItem('token'); // Old token key
+      await AsyncStorage.removeItem('authToken'); // New token key
       console.log('✅ Tokens cleared');
     } catch (error) {
       console.error('❌ Error clearing tokens:', error);
@@ -165,13 +154,13 @@ class AuthService {
 
       if (response.ok && data.success) {
         console.log('✅ Authentication successful for:', email);
-        
+
         // Save both tokens
         await this.saveTokens(data.accessToken, data.refreshToken);
-        
+
         // Save user data
         await AsyncStorage.setItem('userData', JSON.stringify(data.user));
-        
+
         return {
           success: true,
           user: data.user,
@@ -218,13 +207,13 @@ class AuthService {
 
       if (response.ok && data.success) {
         console.log('✅ Registration successful for:', userData.email);
-        
+
         // Save both tokens
         await this.saveTokens(data.accessToken, data.refreshToken);
-        
+
         // Save user data
         await AsyncStorage.setItem('userData', JSON.stringify(data.user));
-        
+
         return {
           success: true,
           user: data.user,
@@ -251,7 +240,7 @@ class AuthService {
     try {
       // Simulate API call
       await this.delay(1000);
-      
+
       // Mock user profile data
       return {
         success: true,
@@ -276,9 +265,9 @@ class AuthService {
   async updateUserProfile(userId, updateData, token) {
     try {
       await this.delay(1500);
-      
+
       console.log('Updating user profile:', userId, updateData);
-      
+
       return {
         success: true,
         message: 'Profile updated successfully'
@@ -295,9 +284,9 @@ class AuthService {
   async resetPassword(email) {
     try {
       await this.delay(2000);
-      
+
       console.log('Password reset requested for:', email);
-      
+
       return {
         success: true,
         message: 'Password reset instructions sent to your email'
@@ -315,6 +304,7 @@ class AuthService {
     try {
       await this.clearTokens();
       await AsyncStorage.removeItem('userData');
+      await AsyncStorage.removeItem('user'); // New user key
       await AsyncStorage.removeItem('@ndma_session_user');
       console.log('✅ User logged out and storage cleared');
       return {
@@ -332,7 +322,11 @@ class AuthService {
   // Get current user from AsyncStorage
   async getCurrentUser() {
     try {
-      const userDataString = await AsyncStorage.getItem('userData');
+      let userDataString = await AsyncStorage.getItem('userData');
+      if (!userDataString) {
+        userDataString = await AsyncStorage.getItem('user'); // Fallback for NewAuthService
+      }
+
       if (userDataString) {
         const userData = JSON.parse(userDataString);
         console.log('✅ Retrieved current user:', userData.email || userData.phone);
@@ -349,11 +343,18 @@ class AuthService {
   // Update user profile
   async updateProfile(updateData) {
     try {
-      const userDataString = await AsyncStorage.getItem('userData');
+      let userDataString = await AsyncStorage.getItem('userData');
+      let key = 'userData';
+
+      if (!userDataString) {
+        userDataString = await AsyncStorage.getItem('user');
+        key = 'user';
+      }
+
       if (userDataString) {
         const userData = JSON.parse(userDataString);
         const updatedUser = { ...userData, ...updateData };
-        await AsyncStorage.setItem('userData', JSON.stringify(updatedUser));
+        await AsyncStorage.setItem(key, JSON.stringify(updatedUser));
         console.log('✅ Profile updated successfully');
         return updatedUser;
       }
@@ -370,7 +371,7 @@ class AuthService {
       // In real implementation, this would upload to a server
       console.log('📸 Uploading profile picture:', imageUri);
       await this.delay(1500);
-      
+
       // Return the image URI as the "uploaded" URL
       return imageUri;
     } catch (error) {

@@ -7,28 +7,34 @@ import { getTrainingReports } from '../services/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { API_BASE_URL } from '../services/config';
+import { authService } from '../services/AuthService';
 
 const ExploreScreen = ({ navigation }) => {
   // Animation values
   const headerFadeAnim = useRef(new Animated.Value(0)).current;
   const headerSlideAnim = useRef(new Animated.Value(-30)).current;
   const cardsAnim = useRef(new Animated.Value(0)).current;
-  
+
   // Disaster alerts state
   const [disasterAlerts, setDisasterAlerts] = useState([]);
   const [loadingAlerts, setLoadingAlerts] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  
+
   // Map disaster zones with coordinates
   const [disasterZones, setDisasterZones] = useState([]);
-  
+
+  // Nearby Users
+  const [nearbyUsers, setNearbyUsers] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+
   // Training points
   const [trainingPoints, setTrainingPoints] = useState([]);
-  
+
   // Training details modal
   const [selectedTraining, setSelectedTraining] = useState(null);
   const [showTrainingModal, setShowTrainingModal] = useState(false);
-  
+
   // Image viewer states
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
@@ -59,7 +65,7 @@ const ExploreScreen = ({ navigation }) => {
         fileUri
       );
       const { uri } = await downloadResumable.downloadAsync();
-      
+
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
         await Sharing.shareAsync(uri);
@@ -84,9 +90,9 @@ const ExploreScreen = ({ navigation }) => {
     try {
       const fileName = `training_image_${Date.now()}.jpg`;
       const fileUri = FileSystem.documentDirectory + fileName;
-      
+
       const { uri } = await FileSystem.downloadAsync(imageUrl, fileUri);
-      
+
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
         await Sharing.shareAsync(uri, {
@@ -128,323 +134,136 @@ const ExploreScreen = ({ navigation }) => {
       const alerts = [];
       const zones = [];
 
-      // 1. Fetch weather alerts from OpenWeather API (covers India)
-      try {
-        const weatherResponse = await fetch(
-          'https://api.openweathermap.org/data/2.5/onecall?lat=20.5937&lon=78.9629&exclude=minutely,hourly&appid=YOUR_API_KEY&units=metric'
-        );
-        
-        // Using free weather API without key for now
-        const freeWeatherResponse = await fetch(
-          'https://api.open-meteo.com/v1/forecast?latitude=20.5937&longitude=78.9629&current=temperature_2m,precipitation,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=Asia/Kolkata'
-        );
-        
-        if (freeWeatherResponse.ok) {
-          const weatherData = await freeWeatherResponse.json();
-          
-          // Check for severe weather conditions
-          const currentWeather = weatherData.current;
-          const dailyWeather = weatherData.daily;
-          
-          // Weather code interpretation (WMO Weather interpretation codes)
-          if (currentWeather.wind_speed_10m > 50) {
-            alerts.push({
-              type: 'cyclone',
-              severity: 'high',
-              title: 'High Wind Alert',
-              location: 'Central India',
-              description: `Strong winds detected: ${currentWeather.wind_speed_10m.toFixed(0)} km/h. Stay indoors and secure loose objects.`,
-              icon: 'thunderstorm-outline',
-              color: '#DC2626',
-              time: 'Now'
-            });
-          }
-          
-          if (currentWeather.precipitation > 50) {
-            alerts.push({
-              type: 'flood',
-              severity: 'medium',
-              title: 'Heavy Rainfall Warning',
-              location: 'Multiple Districts',
-              description: `Intense rainfall detected: ${currentWeather.precipitation}mm. Risk of flooding in low-lying areas.`,
-              icon: 'rainy-outline',
-              color: '#EA580C',
-              time: 'Ongoing'
-            });
-          }
-        }
-      } catch (error) {
-        console.log('Weather API error:', error);
-      }
 
-      // 2. Add disaster zones with coordinates and color-coded risk levels
-      const currentHour = new Date().getHours();
-      const currentMonth = new Date().getMonth() + 1;
-      
-      // Monsoon season alerts (June-September)
-      if (currentMonth >= 6 && currentMonth <= 9) {
-        alerts.push({
-          type: 'flood',
-          severity: 'high',
-          title: 'Monsoon Flood Watch',
-          location: 'Kerala, Karnataka, Maharashtra',
-          description: 'Heavy monsoon rainfall expected. Flood risk in coastal and riverine areas. Stay alert.',
-          icon: 'water-outline',
-          color: '#DC2626',
-          time: '2 hours ago'
-        });
-        
-        // Add flood zones
-        zones.push(
-          {
-            id: 'kerala-flood',
-            name: 'Kerala - High Risk',
-            coordinate: { latitude: 10.8505, longitude: 76.2711 },
-            radius: 150000,
-            color: 'rgba(220, 38, 38, 0.25)',
-            strokeColor: '#DC2626',
-            icon: 'water-outline',
-            severity: 'high'
-          },
-          {
-            id: 'karnataka-flood',
-            name: 'Karnataka - High Risk',
-            coordinate: { latitude: 15.3173, longitude: 75.7139 },
-            radius: 120000,
-            color: 'rgba(220, 38, 38, 0.25)',
-            strokeColor: '#DC2626',
-            icon: 'water-outline',
-            severity: 'high'
-          },
-          {
-            id: 'maharashtra-flood',
-            name: 'Maharashtra - Medium Risk',
-            coordinate: { latitude: 19.7515, longitude: 75.7139 },
-            radius: 150000,
-            color: 'rgba(234, 88, 12, 0.25)',
-            strokeColor: '#EA580C',
-            icon: 'water-outline',
-            severity: 'medium'
-          }
-        );
-      }
-      
-      // Cyclone season alerts (April-June, October-December)
-      if ((currentMonth >= 4 && currentMonth <= 6) || (currentMonth >= 10 && currentMonth <= 12)) {
-        alerts.push({
-          type: 'cyclone',
-          severity: 'medium',
-          title: 'Cyclone Formation Alert',
-          location: 'Bay of Bengal',
-          description: 'Low pressure area developing. Coastal states on alert. IMD monitoring situation.',
-          icon: 'cloud-circle-outline',
-          color: '#EA580C',
-          time: '5 hours ago'
-        });
-        
-        // Add cyclone zones
-        zones.push(
-          {
-            id: 'odisha-cyclone',
-            name: 'Odisha Coast - High Risk',
-            coordinate: { latitude: 20.9517, longitude: 85.0985 },
-            radius: 100000,
-            color: 'rgba(234, 88, 12, 0.25)',
-            strokeColor: '#EA580C',
-            icon: 'cloud-circle-outline',
-            severity: 'high'
-          },
-          {
-            id: 'andhra-cyclone',
-            name: 'Andhra Pradesh - Medium Risk',
-            coordinate: { latitude: 15.9129, longitude: 79.7400 },
-            radius: 120000,
-            color: 'rgba(234, 88, 12, 0.25)',
-            strokeColor: '#EA580C',
-            icon: 'cloud-circle-outline',
-            severity: 'medium'
-          },
-          {
-            id: 'bengal-cyclone',
-            name: 'West Bengal - Medium Risk',
-            coordinate: { latitude: 22.9868, longitude: 87.8550 },
-            radius: 90000,
-            color: 'rgba(202, 138, 4, 0.25)',
-            strokeColor: '#CA8A04',
-            icon: 'cloud-circle-outline',
-            severity: 'medium'
-          }
-        );
-      }
-      
-      // Earthquake monitoring (always active)
-      alerts.push({
-        type: 'earthquake',
-        severity: 'low',
-        title: 'Seismic Activity Update',
-        location: 'Himalayan Region',
-        description: 'Minor tremors (3.5 magnitude) recorded. No damage reported. Monitoring continues.',
-        icon: 'pulse-outline',
-        color: '#0891B2',
-        time: '1 day ago'
-      });
-      
-      // Add earthquake zones
-      zones.push(
-        {
-          id: 'uttarakhand-earthquake',
-          name: 'Uttarakhand - Low Activity',
-          coordinate: { latitude: 30.0668, longitude: 79.0193 },
-          radius: 80000,
-          color: 'rgba(8, 145, 178, 0.2)',
-          strokeColor: '#0891B2',
-          icon: 'pulse-outline',
-          severity: 'low'
-        },
-        {
-          id: 'himachal-earthquake',
-          name: 'Himachal Pradesh - Low Activity',
-          coordinate: { latitude: 31.1048, longitude: 77.1734 },
-          radius: 70000,
-          color: 'rgba(8, 145, 178, 0.2)',
-          strokeColor: '#0891B2',
-          icon: 'pulse-outline',
-          severity: 'low'
-        }
-      );
-      
-      // Heat wave alerts (March-June)
-      if (currentMonth >= 3 && currentMonth <= 6) {
-        alerts.push({
-          type: 'heatwave',
-          severity: 'high',
-          title: 'Heat Wave Warning',
-          location: 'Rajasthan, Delhi, UP, Bihar',
-          description: 'Severe heat wave conditions. Temperature above 45°C. Avoid outdoor activities 11AM-4PM.',
-          icon: 'flame-outline',
-          color: '#DC2626',
-          time: '3 hours ago'
-        });
-        
-        // Add heat wave zones
-        zones.push(
-          {
-            id: 'rajasthan-heatwave',
-            name: 'Rajasthan - Extreme Heat',
-            coordinate: { latitude: 27.0238, longitude: 74.2179 },
-            radius: 200000,
-            color: 'rgba(220, 38, 38, 0.3)',
-            strokeColor: '#DC2626',
-            icon: 'flame-outline',
-            severity: 'high'
-          },
-          {
-            id: 'delhi-heatwave',
-            name: 'Delhi NCR - High Heat',
-            coordinate: { latitude: 28.7041, longitude: 77.1025 },
-            radius: 50000,
-            color: 'rgba(220, 38, 38, 0.3)',
-            strokeColor: '#DC2626',
-            icon: 'flame-outline',
-            severity: 'high'
-          },
-          {
-            id: 'up-heatwave',
-            name: 'Uttar Pradesh - High Heat',
-            coordinate: { latitude: 26.8467, longitude: 80.9462 },
-            radius: 180000,
-            color: 'rgba(234, 88, 12, 0.25)',
-            strokeColor: '#EA580C',
-            icon: 'flame-outline',
-            severity: 'medium'
-          },
-          {
-            id: 'bihar-heatwave',
-            name: 'Bihar - Medium Heat',
-            coordinate: { latitude: 25.0961, longitude: 85.3131 },
-            radius: 120000,
-            color: 'rgba(234, 88, 12, 0.25)',
-            strokeColor: '#EA580C',
-            icon: 'flame-outline',
-            severity: 'medium'
-          }
-        );
-      }
-      
-      // Landslide alerts (during monsoon in hilly areas)
-      if (currentMonth >= 7 && currentMonth <= 9) {
-        alerts.push({
-          type: 'landslide',
-          severity: 'medium',
-          title: 'Landslide Risk Alert',
-          location: 'Uttarakhand, Himachal Pradesh',
-          description: 'Heavy rainfall in hilly regions. Risk of landslides on highways. Travel with caution.',
-          icon: 'triangle-outline',
-          color: '#CA8A04',
-          time: '6 hours ago'
-        });
-        
-        // Add landslide zones
-        zones.push(
-          {
-            id: 'uttarakhand-landslide',
-            name: 'Uttarakhand Hills - High Risk',
-            coordinate: { latitude: 30.0668, longitude: 79.0193 },
-            radius: 90000,
-            color: 'rgba(202, 138, 4, 0.25)',
-            strokeColor: '#CA8A04',
-            icon: 'triangle-outline',
-            severity: 'medium'
-          },
-          {
-            id: 'himachal-landslide',
-            name: 'Himachal Hills - Medium Risk',
-            coordinate: { latitude: 31.1048, longitude: 77.1734 },
-            radius: 80000,
-            color: 'rgba(202, 138, 4, 0.25)',
-            strokeColor: '#CA8A04',
-            icon: 'triangle-outline',
-            severity: 'medium'
-          }
-        );
-      }
-      
-      // Air quality alerts (Winter - October-February)
-      if (currentMonth >= 10 || currentMonth <= 2) {
-        alerts.push({
-          type: 'airquality',
-          severity: 'medium',
-          title: 'Air Quality Alert',
-          location: 'Delhi NCR, North India',
-          description: 'Poor air quality detected. AQI above 300. Use N95 masks. Avoid outdoor exercise.',
-          icon: 'sad-outline',
-          color: '#7C3AED',
-          time: '4 hours ago'
-        });
-        
-        // Add air quality zones
-        zones.push(
-          {
-            id: 'delhi-airquality',
-            name: 'Delhi NCR - Poor AQI',
-            coordinate: { latitude: 28.7041, longitude: 77.1025 },
-            radius: 60000,
-            color: 'rgba(124, 58, 237, 0.2)',
-            strokeColor: '#7C3AED',
-            icon: 'sad-outline',
-            severity: 'medium'
-          }
-        );
-      }
+      // 1. Fetch from SACHET API
+      console.log('📡 Fetching SACHET alerts from:', `${API_BASE_URL}/sachet/all-alerts`);
+      const sachetResponse = await fetch(`${API_BASE_URL}/sachet/all-alerts`);
+      const sachetResult = await sachetResponse.json();
 
-      // Sort by severity
-      const severityOrder = { high: 0, medium: 1, low: 2 };
-      alerts.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+      if (sachetResult.success && sachetResult.data) {
+        const data = sachetResult.data;
+
+        // --- Process Earthquake Alerts ---
+        if (data.earthquakes && data.earthquakes.alerts) {
+          data.earthquakes.alerts.forEach((eq, idx) => {
+            // Earthquake format: distinct lat/long fields
+            const lat = parseFloat(eq.latitude);
+            const lon = parseFloat(eq.longitude);
+
+            if (!isNaN(lat) && !isNaN(lon)) {
+              const colors = ['#0891B2', '#DC2626', '#EA580C']; // Cyan, Red, Orange based on mag?
+              const magnitude = parseFloat(eq.magnitude) || 0;
+              let color = '#0891B2';
+              let severity = 'low';
+              if (magnitude > 6) { color = '#DC2626'; severity = 'high'; }
+              else if (magnitude > 4) { color = '#EA580C'; severity = 'medium'; }
+
+              alerts.push({
+                type: 'earthquake',
+                severity,
+                title: `Earthquake: Mag ${eq.magnitude}`,
+                location: eq.direction || `Lat: ${lat}, Lon: ${lon}`,
+                description: eq.warning_message,
+                icon: 'pulse-outline',
+                color: color,
+                time: eq.effective_start_time
+              });
+
+              zones.push({
+                id: `eq-${idx}-${Date.now()}`,
+                name: `Earthquake ${magnitude}`,
+                coordinate: { latitude: lat, longitude: lon },
+                radius: magnitude * 10000,
+                color: `${color}40`, // 25% opacity
+                strokeColor: color,
+                icon: 'pulse-outline',
+                severity
+              });
+            }
+          });
+        }
+
+        // --- Process Nowcast (Weather) Alerts ---
+        if (data.nowcast && data.nowcast.nowcastDetails) {
+          data.nowcast.nowcastDetails.forEach((nc, idx) => {
+            // Nowcast format: location.coordinates [lng, lat]
+            if (nc.location && nc.location.coordinates) {
+              const lng = nc.location.coordinates[0];
+              const lat = nc.location.coordinates[1];
+
+              let color = '#F59E0B'; // Yellow/Amber
+              if (nc.severity_color === 'red') color = '#DC2626';
+              if (nc.severity_color === 'orange') color = '#EA580C';
+
+              alerts.push({
+                type: 'weather',
+                severity: nc.severity || 'medium',
+                title: nc.event_category || 'Weather Alert',
+                location: nc.area_description,
+                description: `${nc.events}. ${nc.severity}`,
+                icon: 'thunderstorm-outline',
+                color: color,
+                time: nc.effective_start_time
+              });
+
+              zones.push({
+                id: `nc-${idx}-${Date.now()}`,
+                name: nc.event_category,
+                coordinate: { latitude: lat, longitude: lng },
+                radius: 15000,
+                color: `${color}40`,
+                strokeColor: color,
+                icon: 'thunderstorm-outline',
+                severity: nc.severity || 'medium'
+              });
+            }
+          });
+        }
+
+        // --- Process General Alerts ---
+        if (Array.isArray(data.general)) {
+          data.general.forEach((gen, idx) => {
+            // General format: centroid "lng,lat" string
+            if (gen.centroid) {
+              const [lngStr, latStr] = gen.centroid.split(',');
+              const lat = parseFloat(latStr);
+              const lng = parseFloat(lngStr);
+
+              if (!isNaN(lat) && !isNaN(lng)) {
+                let color = '#7C3AED'; // Purple
+                if (gen.severity_color === 'red') color = '#DC2626';
+
+                alerts.push({
+                  type: 'general',
+                  severity: gen.severity || 'medium',
+                  title: gen.disaster_type,
+                  location: gen.area_description,
+                  description: gen.warning_message,
+                  icon: 'alert-circle-outline',
+                  color: color,
+                  time: gen.effective_start_time
+                });
+
+                zones.push({
+                  id: `gen-${idx}-${Date.now()}`,
+                  name: gen.disaster_type,
+                  coordinate: { latitude: lat, longitude: lng },
+                  radius: 20000,
+                  color: `${color}40`,
+                  strokeColor: color,
+                  icon: 'alert-circle-outline',
+                  severity: gen.severity || 'medium'
+                });
+              }
+            }
+          });
+        }
+      }
 
       setDisasterAlerts(alerts);
       setDisasterZones(zones);
-      
-      // Load training points from storage
+
+      // Load training points from storage (kept as is)
       try {
         console.log('📍 Loading training points from storage...');
         const trainings = await getTrainingReports();
@@ -472,7 +291,7 @@ const ExploreScreen = ({ navigation }) => {
       } catch (err) {
         console.log('❌ Training points load error:', err);
       }
-      
+
       setLoadingAlerts(false);
     } catch (error) {
       console.error('Error fetching disaster alerts:', error);
@@ -480,16 +299,36 @@ const ExploreScreen = ({ navigation }) => {
     }
   };
 
+  // Fetch nearby users
+  const fetchNearbyUsers = async () => {
+    try {
+      setLoadingUsers(true);
+      const response = await authService.authenticatedFetch(`${API_BASE_URL}/location/nearby?maxDistance=50000`, { // 50km
+        method: 'GET'
+      });
+      const data = await response.json();
+      if (data && data.nearbyUsers) {
+        setNearbyUsers(data.nearbyUsers);
+        console.log('👥 Loaded nearby users:', data.nearbyUsers.length);
+      }
+      setLoadingUsers(false);
+    } catch (error) {
+      console.log('Error fetching nearby users:', error);
+      setLoadingUsers(false);
+    }
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchDisasterAlerts();
+    await Promise.all([fetchDisasterAlerts(), fetchNearbyUsers()]);
     setRefreshing(false);
   };
 
   useEffect(() => {
     // Fetch disaster alerts on mount
     fetchDisasterAlerts();
-    
+    fetchNearbyUsers();
+
     // Staggered entrance animations
     Animated.sequence([
       // Header animation
@@ -546,8 +385,8 @@ const ExploreScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView 
-        contentContainerStyle={styles.content} 
+      <ScrollView
+        contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -571,7 +410,7 @@ const ExploreScreen = ({ navigation }) => {
             <Ionicons name="map" size={24} color="#3B82F6" />
             <Text style={styles.sectionTitle}>India Disaster Map</Text>
           </View>
-          
+
           {loadingAlerts ? (
             <View style={styles.mapPlaceholder}>
               <ActivityIndicator size="large" color="#3B82F6" />
@@ -611,7 +450,7 @@ const ExploreScreen = ({ navigation }) => {
                     </Marker>
                   </React.Fragment>
                 ))}
-                
+
                 {/* Training points */}
                 {trainingPoints.map((point) => (
                   <Marker
@@ -632,8 +471,33 @@ const ExploreScreen = ({ navigation }) => {
                     </View>
                   </Marker>
                 ))}
+
+                {/* Nearby Active Users */}
+                {nearbyUsers.map((u, idx) => {
+                  if (!u.location || !u.location.coordinates) return null;
+                  const lat = u.location.coordinates[1];
+                  const lng = u.location.coordinates[0];
+                  return (
+                    <Marker
+                      key={`user-${u._id || idx}`}
+                      coordinate={{ latitude: lat, longitude: lng }}
+                      title={u.username}
+                      description={u.role || 'Active User'}
+                    >
+                      <View style={styles.userMarker}>
+                        {u.profilePhoto ? (
+                          <Image source={{ uri: u.profilePhoto }} style={styles.userMarkerImage} />
+                        ) : (
+                          <View style={styles.userMarkerFallback}>
+                            <Text style={styles.userMarkerInitials}>{(u.username || 'U')[0]}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </Marker>
+                  );
+                })}
               </MapView>
-              
+
               {/* Map Legend */}
               <View style={styles.mapLegend}>
                 <View style={styles.legendItem}>
@@ -648,6 +512,14 @@ const ExploreScreen = ({ navigation }) => {
                   <View style={[styles.legendColor, { backgroundColor: '#CA8A04' }]} />
                   <Text style={styles.legendText}>Low</Text>
                 </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendColor, { backgroundColor: '#CA8A04' }]} />
+                  <Text style={styles.legendText}>Low</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendColor, { backgroundColor: '#3B82F6', borderRadius: 8 }]} />
+                  <Text style={styles.legendText}>Users</Text>
+                </View>
               </View>
             </View>
           )}
@@ -659,7 +531,7 @@ const ExploreScreen = ({ navigation }) => {
             <Ionicons name="alert-circle" size={24} color="#DC2626" />
             <Text style={styles.sectionTitle}>Live Disaster Alerts</Text>
           </View>
-          
+
           {loadingAlerts ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#3B82F6" />
@@ -709,7 +581,7 @@ const ExploreScreen = ({ navigation }) => {
             <Ionicons name="school" size={24} color="#3B82F6" />
             <Text style={styles.sectionTitle}>Learning Paths</Text>
           </View>
-          
+
           <View style={styles.list}>
             {featured.map((item, index) => (
               <AnimatedCard key={item.title} index={index + disasterAlerts.length} isPrimary={index === 0}>
@@ -795,8 +667,8 @@ const ExploreScreen = ({ navigation }) => {
                     <Text style={styles.detailLabel}>Images ({selectedTraining.images.length})</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imagesGallery}>
                       {selectedTraining.images.map((img, idx) => (
-                        <TouchableOpacity 
-                          key={idx} 
+                        <TouchableOpacity
+                          key={idx}
                           onPress={() => openImageViewer(selectedTraining.images, idx)}
                         >
                           <Image source={{ uri: img }} style={styles.galleryImage} />
@@ -812,10 +684,10 @@ const ExploreScreen = ({ navigation }) => {
                     {selectedTraining.files.map((file, idx) => (
                       <View key={idx} style={styles.fileItem}>
                         <View style={styles.fileIcon}>
-                          <Ionicons 
-                            name={file.type?.includes('pdf') ? 'document' : 'document-text'} 
-                            size={24} 
-                            color="#10B981" 
+                          <Ionicons
+                            name={file.type?.includes('pdf') ? 'document' : 'document-text'}
+                            size={24}
+                            color="#10B981"
                           />
                         </View>
                         <View style={{ flex: 1 }}>
@@ -854,45 +726,45 @@ const ExploreScreen = ({ navigation }) => {
       {/* Image Viewer Modal */}
       <Modal visible={showImageViewer} transparent={true} animationType="fade">
         <View style={styles.imageViewerContainer}>
-          <TouchableOpacity 
-            style={styles.imageViewerClose} 
+          <TouchableOpacity
+            style={styles.imageViewerClose}
             onPress={() => setShowImageViewer(false)}
           >
             <Ionicons name="close-circle" size={40} color="#FFFFFF" />
           </TouchableOpacity>
-          
-          <ScrollView 
-            horizontal 
-            pagingEnabled 
+
+          <ScrollView
+            horizontal
+            pagingEnabled
             showsHorizontalScrollIndicator={false}
             contentOffset={{ x: selectedImageIndex * 400, y: 0 }}
             style={styles.imageViewerScroll}
           >
             {currentImages.map((img, idx) => (
               <View key={idx} style={styles.imageViewerPage}>
-                <Image 
-                  source={{ uri: img }} 
-                  style={styles.fullImage} 
-                  resizeMode="contain" 
+                <Image
+                  source={{ uri: img }}
+                  style={styles.fullImage}
+                  resizeMode="contain"
                 />
               </View>
             ))}
           </ScrollView>
-          
+
           <View style={styles.imageViewerActions}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.imageActionButton}
               onPress={() => downloadImage(currentImages[selectedImageIndex])}
             >
               <Ionicons name="download" size={24} color="#FFFFFF" />
               <Text style={{ color: '#FFFFFF', marginLeft: 8, fontWeight: '600' }}>Download</Text>
             </TouchableOpacity>
-            
+
             <Text style={styles.imageCounter}>
               {selectedImageIndex + 1} / {currentImages.length}
             </Text>
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               style={styles.imageActionButton}
               onPress={() => Sharing.shareAsync(currentImages[selectedImageIndex])}
             >
@@ -902,7 +774,7 @@ const ExploreScreen = ({ navigation }) => {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </SafeAreaView >
   );
 };
 
@@ -1306,6 +1178,39 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  userMarker: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    backgroundColor: '#3B82F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  userMarkerImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  userMarkerFallback: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#3B82F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  userMarkerInitials: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 14,
+  }
 });
 
 export default ExploreScreen;

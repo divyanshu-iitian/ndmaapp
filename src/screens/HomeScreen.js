@@ -12,7 +12,7 @@ const { width, height } = Dimensions.get('window');
 
 const HomeScreen = ({ route, navigation }) => {
   const [userName, setUserName] = useState('Responder');
-  
+
   const [liveLocation, setLiveLocation] = useState(null);
   const [trainingReports, setTrainingReports] = useState([]);
   const [aiSummary, setAiSummary] = useState('');
@@ -35,14 +35,14 @@ const HomeScreen = ({ route, navigation }) => {
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
   };
-  
-  const bilaspurLocation = liveLocation 
+
+  const bilaspurLocation = liveLocation
     ? {
-        latitude: liveLocation.coordinate.latitude,
-        longitude: liveLocation.coordinate.longitude,
-        latitudeDelta: 0.0922,
-        longitudeDelta: 0.0421,
-      }
+      latitude: liveLocation.coordinate.latitude,
+      longitude: liveLocation.coordinate.longitude,
+      latitudeDelta: 0.0922,
+      longitudeDelta: 0.0421,
+    }
     : defaultLocation;
 
   // Load user data from AsyncStorage
@@ -53,8 +53,8 @@ const HomeScreen = ({ route, navigation }) => {
   const loadUserData = async () => {
     try {
       // Try to get user from route params first (after login)
-      if (route?.params?.user?.name) {
-        setUserName(route.params.user.name);
+      if (route?.params?.user?.name || route?.params?.user?.username) {
+        setUserName(route.params.user.name || route.params.user.username);
         return;
       }
 
@@ -66,10 +66,10 @@ const HomeScreen = ({ route, navigation }) => {
 
       if (sessionUser) {
         const user = JSON.parse(sessionUser);
-        setUserName(user.name || 'Responder');
+        setUserName(user.name || user.username || 'Responder');
       } else if (userData) {
         const user = JSON.parse(userData);
-        setUserName(user.name || 'Responder');
+        setUserName(user.name || user.username || 'Responder');
       }
     } catch (error) {
       console.error('Error loading user data:', error);
@@ -80,7 +80,7 @@ const HomeScreen = ({ route, navigation }) => {
   useEffect(() => {
     loadLiveLocation();
     loadTrainingReports(); // Load reports on initial mount
-    
+
     // Staggered entrance animations
     Animated.sequence([
       Animated.parallel([
@@ -107,7 +107,7 @@ const HomeScreen = ({ route, navigation }) => {
       }),
     ]).start();
   }, []);
-  
+
   const loadLiveLocation = async () => {
     const live = await getLiveTrainingLocation();
     if (live) {
@@ -122,13 +122,13 @@ const HomeScreen = ({ route, navigation }) => {
       console.log('� Calling ReportsService.getUserReports()');
       const reportsResponse = await ReportsService.getUserReports();
       console.log('📡 Backend response:', reportsResponse);
-      
+
       if (reportsResponse.success && Array.isArray(reportsResponse.reports)) {
         console.log('✅ Loaded reports from backend:', reportsResponse.reports.length);
         console.log('📋 First report:', JSON.stringify(reportsResponse.reports[0], null, 2));
         setTrainingReports(reportsResponse.reports);
         setIsInitialLoad(false);
-        
+
         // Generate AI summary immediately after loading reports
         if (reportsResponse.reports.length > 0) {
           console.log('🚀 Triggering AI summary generation');
@@ -136,7 +136,7 @@ const HomeScreen = ({ route, navigation }) => {
         }
         return;
       }
-      
+
       // If backend fails, set empty array
       console.log('⚠️ Backend failed or no reports found');
       setTrainingReports([]);
@@ -150,7 +150,7 @@ const HomeScreen = ({ route, navigation }) => {
 
   const generateAISummary = async () => {
     console.log('🔍 generateAISummary called, reports:', trainingReports?.length || 0);
-    
+
     // Guard clause - exit if no valid data
     if (!trainingReports || !Array.isArray(trainingReports) || trainingReports.length === 0) {
       console.log('⚠️ No reports found, setting default message');
@@ -164,7 +164,7 @@ const HomeScreen = ({ route, navigation }) => {
 
   const generateAISummaryDirect = (reports) => {
     console.log('🔍 generateAISummaryDirect called with', reports?.length || 0, 'reports');
-    
+
     if (!reports || !Array.isArray(reports) || reports.length === 0) {
       console.log('⚠️ No reports provided');
       setAiSummary('Set up training location and submit reports to get AI-powered insights.');
@@ -176,16 +176,16 @@ const HomeScreen = ({ route, navigation }) => {
     try {
       const locationName = liveLocation?.locationName || 'Your Location';
       const reportCount = reports.length;
-      
+
       console.log('📊 Generating summary for', reportCount, 'reports at', locationName);
-      
+
       // Safe reduce with proper checks
       const totalParticipants = reports.reduce((sum, r) => {
         if (!r) return sum;
         const participants = parseInt(r.participants_count || r.participants) || 0;
         return sum + participants;
       }, 0);
-      
+
       // Safe average calculation
       const avgCompletion = reports.reduce((sum, r) => {
         if (!r) return sum;
@@ -198,7 +198,7 @@ const HomeScreen = ({ route, navigation }) => {
         .filter(r => r && Array.isArray(r.topics_covered))
         .flatMap(r => r.topics_covered)
         .filter(Boolean);
-      
+
       const uniqueTopics = [...new Set(allTopics)];
       const topicsText = uniqueTopics.slice(0, 3).join(', ') || 'Disaster management topics';
 
@@ -230,7 +230,7 @@ const HomeScreen = ({ route, navigation }) => {
     // AI summary will regenerate automatically via useEffect
     setRefreshing(false);
   };
-  
+
   // Add focus listener to reload data when returning from Map screen
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
@@ -242,7 +242,7 @@ const HomeScreen = ({ route, navigation }) => {
 
   useEffect(() => {
     console.log('🎯 useEffect triggered - isInitialLoad:', isInitialLoad, ', reports:', trainingReports?.length || 0);
-    
+
     // Only generate summary if we have valid data and initial load is complete
     if (!isInitialLoad && trainingReports && Array.isArray(trainingReports) && trainingReports.length > 0) {
       console.log('✅ Conditions met, calling generateAISummary');
@@ -282,8 +282,8 @@ const HomeScreen = ({ route, navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView 
-        contentContainerStyle={styles.content} 
+      <ScrollView
+        contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -294,7 +294,7 @@ const HomeScreen = ({ route, navigation }) => {
           />
         }
       >
-        <Animated.View 
+        <Animated.View
           style={[
             styles.headerSection,
             {
@@ -308,7 +308,7 @@ const HomeScreen = ({ route, navigation }) => {
           <Text style={styles.subtitle}>Your training dashboard</Text>
         </Animated.View>
 
-        <Animated.View 
+        <Animated.View
           style={[
             styles.mapSection,
             {
@@ -333,8 +333,8 @@ const HomeScreen = ({ route, navigation }) => {
                   longitude: bilaspurLocation.longitude,
                 }}
                 title={liveLocation ? "Live Training Location" : "Training Center"}
-                description={liveLocation 
-                  ? `Updated: ${new Date(liveLocation.updatedAt).toLocaleString()}` 
+                description={liveLocation
+                  ? `Updated: ${new Date(liveLocation.updatedAt).toLocaleString()}`
                   : "Active disaster management training - Bilaspur"
                 }
                 pinColor="#0056D2"
@@ -348,14 +348,14 @@ const HomeScreen = ({ route, navigation }) => {
                 </Text>
               </View>
               <Text style={styles.locationSubtitle}>
-                {liveLocation 
-                  ? `Last updated: ${new Date(liveLocation.updatedAt).toLocaleTimeString()}` 
+                {liveLocation
+                  ? `Last updated: ${new Date(liveLocation.updatedAt).toLocaleTimeString()}`
                   : "Disaster Management Workshop - Active"
                 }
               </Text>
             </View>
           </View>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.updateMapButton}
             activeOpacity={0.8}
             onPress={() => navigation.navigate('Map')}
@@ -365,7 +365,7 @@ const HomeScreen = ({ route, navigation }) => {
         </Animated.View>
 
         <View style={styles.quickActions}>
-          <Animated.Text 
+          <Animated.Text
             style={[
               styles.sectionTitle,
               {
@@ -386,30 +386,21 @@ const HomeScreen = ({ route, navigation }) => {
                 <Text style={styles.actionText}>Connect to session</Text>
               </TouchableOpacity>
             </AnimatedActionCard>
-            
+
             <AnimatedActionCard index={1} style={styles.actionCard}>
-              <TouchableOpacity 
-                style={styles.cardTouchable} 
+              <TouchableOpacity
+                style={styles.cardTouchable}
                 activeOpacity={0.8}
-                onPress={() => {
-                  // Create demo training session ID
-                  const demoTrainingId = `training-${Date.now()}`;
-                  
-                  navigation.navigate('AttendanceSession', {
-                    trainingId: demoTrainingId,
-                    trainingType: 'Disaster Management Workshop',
-                    location: bilaspurLocation
-                  });
-                }}
+                onPress={() => navigation.navigate('WifiAttendanceDashboard')}
               >
                 <View style={[styles.actionIconContainer, styles.iconBlue]}>
-                  <Ionicons name="checkbox-outline" size={20} color="#FFFFFF" />
+                  <Ionicons name="wifi" size={20} color="#FFFFFF" />
                 </View>
-                <Text style={styles.actionTitle}>Attendance</Text>
-                <Text style={styles.actionText}>Take attendance</Text>
+                <Text style={styles.actionTitle}>Wi-Fi Attendance</Text>
+                <Text style={styles.actionText}>Local Network Mode</Text>
               </TouchableOpacity>
             </AnimatedActionCard>
-            
+
             <AnimatedActionCard index={2} style={styles.actionCard}>
               <TouchableOpacity style={styles.cardTouchable} activeOpacity={0.8}>
                 <View style={[styles.actionIconContainer, styles.iconGreen]}>
@@ -419,7 +410,7 @@ const HomeScreen = ({ route, navigation }) => {
                 <Text style={styles.actionText}>Download materials</Text>
               </TouchableOpacity>
             </AnimatedActionCard>
-            
+
             <AnimatedActionCard index={3} style={styles.actionCard}>
               <TouchableOpacity style={styles.cardTouchable} activeOpacity={0.8}>
                 <View style={[styles.actionIconContainer, styles.iconRed]}>
@@ -429,10 +420,10 @@ const HomeScreen = ({ route, navigation }) => {
                 <Text style={styles.actionText}>Quick response</Text>
               </TouchableOpacity>
             </AnimatedActionCard>
-            
+
             <AnimatedActionCard index={4} style={styles.actionCard}>
-              <TouchableOpacity 
-                style={styles.cardTouchable} 
+              <TouchableOpacity
+                style={styles.cardTouchable}
                 activeOpacity={0.8}
                 onPress={() => navigation.navigate('Chat')}
               >
@@ -443,7 +434,7 @@ const HomeScreen = ({ route, navigation }) => {
                 <Text style={styles.actionText}>AI data insights</Text>
               </TouchableOpacity>
             </AnimatedActionCard>
-            
+
             <AnimatedActionCard index={5} style={styles.actionCard}>
               <TouchableOpacity style={styles.cardTouchable} activeOpacity={0.8}>
                 <View style={[styles.actionIconContainer, styles.iconOrange]}>
@@ -453,7 +444,7 @@ const HomeScreen = ({ route, navigation }) => {
                 <Text style={styles.actionText}>Get assistance</Text>
               </TouchableOpacity>
             </AnimatedActionCard>
-            
+
             <AnimatedActionCard index={6} style={styles.actionCard}>
               <TouchableOpacity style={styles.cardTouchable} activeOpacity={0.8}>
                 <View style={[styles.actionIconContainer, styles.iconGray]}>
@@ -475,7 +466,7 @@ const HomeScreen = ({ route, navigation }) => {
                 <Text style={styles.sectionTitle}>AI Insights</Text>
               </View>
             </View>
-            
+
             <View style={styles.aiSummaryCard}>
               {loadingSummary ? (
                 <View style={styles.loadingContainer}>
@@ -512,7 +503,7 @@ const HomeScreen = ({ route, navigation }) => {
           <View style={styles.chartsSection}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Performance Overview</Text>
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => navigation.navigate('Analytics')}
                 style={styles.viewAllButton}
               >
@@ -520,7 +511,7 @@ const HomeScreen = ({ route, navigation }) => {
                 <Ionicons name="arrow-forward" size={16} color="#4299E1" />
               </TouchableOpacity>
             </View>
-            
+
             <View style={styles.chartCard}>
               <Text style={styles.chartTitle}>Participant Trends</Text>
               <LineChart
@@ -556,7 +547,7 @@ const HomeScreen = ({ route, navigation }) => {
         <View style={styles.reportsSection}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Training Reports</Text>
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={() => navigation.navigate('Map')}
               style={styles.addButton}
             >
@@ -712,7 +703,7 @@ const HomeScreen = ({ route, navigation }) => {
                 )}
 
                 <View style={styles.modalActions}>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.editButton}
                     onPress={() => {
                       setShowReportModal(false);
@@ -722,8 +713,8 @@ const HomeScreen = ({ route, navigation }) => {
                     <Ionicons name="pencil" size={18} color="#FFFFFF" />
                     <Text style={styles.editButtonText}>Edit</Text>
                   </TouchableOpacity>
-                  
-                  <TouchableOpacity 
+
+                  <TouchableOpacity
                     style={styles.deleteButton}
                     onPress={async () => {
                       Alert.alert(

@@ -34,6 +34,26 @@ const TrainerLoginScreen = ({ navigation }) => {
       const result = await MongoDBService.loginUser(email.trim().toLowerCase(), password);
       
       if (result.success) {
+        // Check if account requires verification
+        if (result.requiresVerification) {
+          Alert.alert(
+            'Account Verification Required',
+            'Your account is pending verification. Please wait for approval.',
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  navigation.navigate('VerificationPending', {
+                    verificationStatus: result.verificationStatus || 'pending',
+                    notes: result.notes || ''
+                  });
+                }
+              }
+            ]
+          );
+          return;
+        }
+
         console.log('✅ Login successful:', result.user.email);
         
         // Save token and user data (MongoDBService already persisted 'token' and 'userData')

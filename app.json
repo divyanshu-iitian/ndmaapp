@@ -6,7 +6,6 @@
     "orientation": "portrait",
     "icon": "./prashikshak.png",
     "userInterfaceStyle": "light",
-  "newArchEnabled": false,
     "splash": {
       "image": "./prashikshak.png",
       "resizeMode": "contain",

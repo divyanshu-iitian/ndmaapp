@@ -23,7 +23,7 @@ const ProfileScreen = ({ navigation }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [uploading, setUploading] = useState(false);
-  
+
   const [editForm, setEditForm] = useState({
     name: '',
     email: '',
@@ -38,10 +38,10 @@ const ProfileScreen = ({ navigation }) => {
   const loadUserProfile = async () => {
     try {
       setLoading(true);
-      const userData = await authService.getCurrentUser();
+      const userData = await authService.getCurrentUser() || {};
       setUser(userData);
       setEditForm({
-        name: userData.name || '',
+        name: userData.name || userData.username || '',
         email: userData.email || '',
         phone: userData.phone || '',
         address: userData.address || ''
@@ -56,12 +56,13 @@ const ProfileScreen = ({ navigation }) => {
 
   const getRoleColor = () => {
     if (!user) return '#0047BA';
-    switch (user.role) {
-      case 'Authority':
+    const role = user.role ? user.role.toLowerCase() : '';
+    switch (role) {
+      case 'authority':
         return '#8B5CF6';
-      case 'Trainer':
+      case 'trainer':
         return '#0047BA';
-      case 'Trainee':
+      case 'trainee':
         return '#10B981';
       default:
         return '#0047BA';
@@ -70,12 +71,13 @@ const ProfileScreen = ({ navigation }) => {
 
   const getRoleIcon = () => {
     if (!user) return 'person';
-    switch (user.role) {
-      case 'Authority':
+    const role = user.role ? user.role.toLowerCase() : '';
+    switch (role) {
+      case 'authority':
         return 'shield-checkmark';
-      case 'Trainer':
+      case 'trainer':
         return 'school';
-      case 'Trainee':
+      case 'trainee':
         return 'people';
       default:
         return 'person';
@@ -85,7 +87,7 @@ const ProfileScreen = ({ navigation }) => {
   const pickAndUploadProfilePic = async () => {
     try {
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      
+
       if (!permissionResult.granted) {
         Alert.alert('Permission Required', 'Please allow access to your photos to upload a profile picture.');
         return;
@@ -131,7 +133,11 @@ const ProfileScreen = ({ navigation }) => {
     try {
       const result = await authService.logout();
       if (result.success) {
-        navigation.replace('Auth');
+        // Reset navigation stack to ensure user cannot go back to profile
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'NewAuthLogin' }], // Changed from 'Auth' to 'NewAuthLogin'
+        });
       } else {
         Alert.alert('Error', 'Failed to logout');
       }
@@ -149,8 +155,8 @@ const ProfileScreen = ({ navigation }) => {
     );
   }
 
-  const profilePicUrl = user?.profilePicture;
-  const initial = user?.name ? user.name.charAt(0).toUpperCase() : '?';
+  const profilePicUrl = user?.profilePicture || user?.profilePhoto;
+  const initial = (user?.name || user?.username) ? (user.name || user.username).charAt(0).toUpperCase() : '?';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -159,7 +165,7 @@ const ProfileScreen = ({ navigation }) => {
           colors={[getRoleColor(), `${getRoleColor()}CC`]}
           style={styles.header}
         >
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.avatarContainer}
             onPress={pickAndUploadProfilePic}
             disabled={uploading}
@@ -180,8 +186,8 @@ const ProfileScreen = ({ navigation }) => {
             </View>
           </TouchableOpacity>
 
-          <Text style={styles.userName}>{user?.name}</Text>
-          
+          <Text style={styles.userName}>{user?.name || user?.username}</Text>
+
           <View style={styles.roleBadge}>
             <Ionicons name={getRoleIcon()} size={14} color="#FFFFFF" />
             <Text style={styles.roleText}>{user?.role?.toUpperCase()}</Text>
@@ -272,7 +278,7 @@ const ProfileScreen = ({ navigation }) => {
               </View>
             ) : (
               <View style={styles.infoCards}>
-                <InfoCard icon="person" title="Full Name" value={user?.name || 'Not set'} />
+                <InfoCard icon="person" title="Full Name" value={user?.name || user?.username || 'Not set'} />
                 <InfoCard icon="mail" title="Email" value={user?.email || 'Not set'} />
                 <InfoCard icon="call" title="Phone" value={user?.phone || 'Not set'} />
                 <InfoCard icon="location" title="Address" value={user?.address || 'Not set'} />
@@ -282,21 +288,21 @@ const ProfileScreen = ({ navigation }) => {
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Settings</Text>
-            
+
             <ActionButton
               icon="notifications-outline"
               title="Notification Preferences"
               color="#F59E0B"
               onPress={() => Alert.alert('Coming Soon', 'Notification settings will be available soon')}
             />
-            
+
             <ActionButton
               icon="shield-checkmark-outline"
               title="Privacy & Security"
               color="#8B5CF6"
               onPress={() => Alert.alert('Coming Soon', 'Privacy settings will be available soon')}
             />
-            
+
             <ActionButton
               icon="help-circle-outline"
               title="Help & Support"
@@ -326,7 +332,7 @@ const ProfileScreen = ({ navigation }) => {
             <View style={styles.modalIcon}>
               <Ionicons name="log-out-outline" size={40} color="#EF4444" />
             </View>
-            
+
             <Text style={styles.modalTitle}>Logout</Text>
             <Text style={styles.modalMessage}>
               Are you sure you want to logout?

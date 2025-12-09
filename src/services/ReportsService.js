@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from './config';
-import authService from './AuthService';
+import { authService } from './AuthService';
 
 class ReportsService {
   constructor() {
@@ -23,12 +23,12 @@ class ReportsService {
       console.log('🔄 Waking up backend (cold start check)...');
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 sec timeout
-      
+
       const response = await fetch(`${API_BASE_URL}/`, {
         method: 'GET',
         signal: controller.signal,
       });
-      
+
       clearTimeout(timeoutId);
       console.log('✅ Backend is awake:', response.status);
       return true;
@@ -43,10 +43,10 @@ class ReportsService {
     try {
       console.log('🚀 ReportsService: Starting createReport...');
       console.log('📊 Report data:', JSON.stringify(reportData, null, 2));
-      
+
       const token = await authService.getAccessToken();
       console.log('🔑 Access Token retrieved:', token ? 'YES (length: ' + token.length + ')' : 'NO');
-      
+
       if (!token) {
         console.log('❌ No token found - user not authenticated');
         return { success: false, error: 'User not authenticated. Please login again.' };
@@ -56,16 +56,16 @@ class ReportsService {
         try {
           // Wake up backend first (helps with Render cold start)
           await this.wakeUpBackend();
-          
-          console.log('📡 Sending POST request to:', `${API_BASE_URL}/api/reports/create`);
+
+          console.log('📡 Sending POST request to:', `${API_BASE_URL}/reports/create`);
           console.log('📋 Request body:', JSON.stringify(reportData, null, 2));
-          
+
           // Create abort controller for timeout
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
-          
+
           // Use authenticated fetch with auto token refresh
-          const response = await authService.authenticatedFetch(`${API_BASE_URL}/api/reports/create`, {
+          const response = await authService.authenticatedFetch(`${API_BASE_URL}/reports/create`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -76,7 +76,7 @@ class ReportsService {
 
           clearTimeout(timeoutId);
           console.log('📥 Response status:', response.status, response.statusText);
-          
+
           const data = await response.json();
           console.log('📦 Response data:', JSON.stringify(data, null, 2));
 
@@ -93,7 +93,7 @@ class ReportsService {
         } catch (error) {
           console.error('❌ Backend error:', error);
           console.error('❌ Error details:', error.message, error.stack);
-          
+
           // Better error messages
           if (error.name === 'AbortError') {
             return { success: false, error: 'Request timeout. Backend might be starting up (Cold start). Please wait 30 seconds and try again.' };
@@ -104,7 +104,7 @@ class ReportsService {
           if (error.message.includes('No access token')) {
             return { success: false, error: 'Session expired. Please login again.' };
           }
-          
+
           return { success: false, error: error.message };
         }
       }
@@ -127,7 +127,7 @@ class ReportsService {
     try {
       const token = await authService.getAccessToken();
       console.log('🔑 Access Token for getUserReports:', token ? 'YES (length: ' + token.length + ')' : 'NO');
-      
+
       if (!token) {
         console.log('❌ ReportsService: No token.');
         return { success: false, error: 'User not logged in. Please login again.' };
@@ -135,16 +135,22 @@ class ReportsService {
 
       if (this.useBackend) {
         try {
-          console.log('📡 Fetching from:', `${API_BASE_URL}/api/reports/user`);
-          
-          const response = await this.authenticatedFetch(`${API_BASE_URL}/api/reports/user`, {
+          const response = await this.authenticatedFetch(`${API_BASE_URL}/reports/user`, {
             method: 'GET',
           });
-          
+
+          const text = await response.text();
+          let data;
+          try {
+            data = JSON.parse(text);
+          } catch (e) {
+            // Silently handle HTML responses (likely 404 or server errors)
+            // console.warn('ReportsService: Received non-JSON response (likely HTML error page), ignoring.');
+            return { success: false, error: 'Server Invalid Response' };
+          }
+
           console.log('📥 Response status:', response.status, response.statusText);
-          
-          const data = await response.json();
-          console.log('📦 Response data:', JSON.stringify(data, null, 2));
+          // console.log('📦 Response data:', JSON.stringify(data, null, 2));
 
           if (response.ok && data.success) {
             console.log(`✅ ReportsService: Fetched ${data.reports.length} reports from cloud.`);
@@ -155,14 +161,14 @@ class ReportsService {
           }
         } catch (error) {
           console.error('❌ ReportsService: Network or fetch error.', error);
-          if (error.message.includes('No access token')) {
+          if (error.message && error.message.includes('No access token')) {
             return { success: false, error: 'Session expired. Please login again.' };
           }
           return { success: false, error: error.message };
         }
       }
       // Fallback should not be the default path
-      console.log('⚠️ ReportsService: Backend is disabled, using local fallback.');
+      // console.log('⚠️ ReportsService: Backend is disabled, using local fallback.');
       return { success: false, error: 'Backend disabled', reports: [] };
     } catch (error) {
       console.error('❌ ReportsService: Critical error in getUserReports.', error);
@@ -177,7 +183,7 @@ class ReportsService {
       if (!token) return { success: false, error: 'User not authenticated. Please login again.', reports: [] };
       if (this.useBackend) {
         try {
-          const response = await this.authenticatedFetch(`${API_BASE_URL}/api/reports/all`, {
+          const response = await this.authenticatedFetch(`${API_BASE_URL}/reports/all`, {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
@@ -209,7 +215,7 @@ class ReportsService {
   async saveReportLocally(reportData, userId, userEmail, userName) {
     try {
       const REPORTS_KEY = '@ndma_training_reports_v1';
-      
+
       // Get existing reports
       const reportsJson = await AsyncStorage.getItem(REPORTS_KEY);
       const reports = reportsJson ? JSON.parse(reportsJson) : [];
@@ -248,17 +254,17 @@ class ReportsService {
     try {
       const token = await authService.getAccessToken();
       if (!token) return { success: false, error: 'User not authenticated. Please login again.' };
-      const response = await this.authenticatedFetch(`${API_BASE_URL}/api/reports/approve/${reportId}`, {
+      const response = await this.authenticatedFetch(`${API_BASE_URL}/reports/approve/${reportId}`, {
         method: 'PUT',
       });
       const data = await response.json();
       if (response.ok && data.success) return { success: true, report: data.report };
       return { success: false, error: data.error || 'Approve failed' };
-    } catch (e) { 
+    } catch (e) {
       if (e.message.includes('No access token')) {
         return { success: false, error: 'Session expired. Please login again.' };
       }
-      return { success: false, error: e.message }; 
+      return { success: false, error: e.message };
     }
   }
 
@@ -266,7 +272,7 @@ class ReportsService {
     try {
       const token = await authService.getAccessToken();
       if (!token) return { success: false, error: 'User not authenticated. Please login again.' };
-      const response = await this.authenticatedFetch(`${API_BASE_URL}/api/reports/reject/${reportId}`, {
+      const response = await this.authenticatedFetch(`${API_BASE_URL}/reports/reject/${reportId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -276,11 +282,11 @@ class ReportsService {
       const data = await response.json();
       if (response.ok && data.success) return { success: true, report: data.report };
       return { success: false, error: data.error || 'Reject failed' };
-    } catch (e) { 
+    } catch (e) {
       if (e.message.includes('No access token')) {
         return { success: false, error: 'Session expired. Please login again.' };
       }
-      return { success: false, error: e.message }; 
+      return { success: false, error: e.message };
     }
   }
 
@@ -335,23 +341,23 @@ class ReportsService {
   async deleteReport(reportId) {
     try {
       console.log('🗑️ ReportsService: Attempting to delete report:', reportId);
-      
+
       const token = await authService.getAccessToken();
       if (!token) {
         console.error('❌ No token found');
         return { success: false, error: 'User not authenticated. Please login again.' };
       }
 
-      console.log('🔑 Token found, making DELETE request to:', `${API_BASE_URL}/api/reports/delete/${reportId}`);
+      console.log('🔑 Token found, making DELETE request to:', `${API_BASE_URL}/reports/delete/${reportId}`);
 
       if (this.useBackend) {
         try {
-          const response = await this.authenticatedFetch(`${API_BASE_URL}/api/reports/delete/${reportId}`, {
+          const response = await this.authenticatedFetch(`${API_BASE_URL}/reports/delete/${reportId}`, {
             method: 'DELETE',
           });
 
           console.log('📡 Response status:', response.status);
-          
+
           const data = await response.json();
           console.log('📦 Response data:', JSON.stringify(data, null, 2));
 
@@ -391,7 +397,7 @@ class ReportsService {
 
       if (this.useBackend) {
         try {
-          const response = await this.authenticatedFetch(`${API_BASE_URL}/api/reports/update/${reportId}`, {
+          const response = await this.authenticatedFetch(`${API_BASE_URL}/reports/update/${reportId}`, {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
@@ -432,7 +438,7 @@ class ReportsService {
 
       if (this.useBackend) {
         try {
-          const response = await this.authenticatedFetch(`${API_BASE_URL}/api/reports/send/${reportId}`, {
+          const response = await this.authenticatedFetch(`${API_BASE_URL}/reports/send/${reportId}`, {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
@@ -469,7 +475,7 @@ class ReportsService {
     try {
       console.log('📊 ReportsService: Getting analytics data...');
       const token = await authService.getAccessToken();
-      
+
       if (!token) {
         console.error('❌ No token found');
         return { success: false, error: 'User not authenticated. Please login again.' };
@@ -477,14 +483,14 @@ class ReportsService {
 
       if (this.useBackend) {
         try {
-          console.log('📡 Fetching from:', `${API_BASE_URL}/api/reports/analytics`);
-          
-          const response = await this.authenticatedFetch(`${API_BASE_URL}/api/reports/analytics`, {
+          console.log('📡 Fetching from:', `${API_BASE_URL}/reports/analytics`);
+
+          const response = await this.authenticatedFetch(`${API_BASE_URL}/reports/analytics`, {
             method: 'GET',
           });
 
           console.log('📥 Analytics response status:', response.status);
-          
+
           const data = await response.json();
           console.log('📦 Analytics data received:', JSON.stringify(data, null, 2));
 
@@ -517,7 +523,7 @@ class ReportsService {
     try {
       console.log('🗺️ ReportsService: Getting live map data...', { organization, date });
       const token = await authService.getAccessToken();
-      
+
       if (!token) {
         console.error('❌ No token found');
         return { success: false, error: 'User not authenticated. Please login again.' };
@@ -526,23 +532,23 @@ class ReportsService {
       if (this.useBackend) {
         try {
           // Build query params
-          let url = `${API_BASE_URL}/api/reports/live-map`;
+          let url = `${API_BASE_URL}/reports/live-map`;
           const params = new URLSearchParams();
           if (organization) params.append('organization', organization);
           if (date) params.append('date', date);
-          
+
           if (params.toString()) {
             url += `?${params.toString()}`;
           }
 
           console.log('📡 Fetching from:', url);
-          
+
           const response = await this.authenticatedFetch(url, {
             method: 'GET',
           });
 
           console.log('📥 Live map response status:', response.status);
-          
+
           const data = await response.json();
 
           if (response.ok && data.success) {
@@ -574,7 +580,7 @@ class ReportsService {
     try {
       console.log('📊 ReportsService: Getting org analytics...', { organization });
       const token = await authService.getAccessToken();
-      
+
       if (!token) {
         console.error('❌ No token found');
         return { success: false, error: 'User not authenticated. Please login again.' };
@@ -582,25 +588,25 @@ class ReportsService {
 
       if (this.useBackend) {
         try {
-          let url = `${API_BASE_URL}/api/reports/analytics-by-organization`;
+          let url = `${API_BASE_URL}/reports/analytics-by-organization`;
           if (organization && organization !== 'all') {
             url += `?organization=${organization}`;
           }
 
           console.log('📡 Fetching from:', url);
-          
+
           const response = await this.authenticatedFetch(url, {
             method: 'GET',
           });
 
           console.log('📥 Org analytics response status:', response.status);
-          
+
           const data = await response.json();
 
           if (response.ok && data.success) {
             console.log('✅ Org analytics loaded successfully');
-            return { 
-              success: true, 
+            return {
+              success: true,
               organization: data.organization,
               summary: data.summary,
               breakdowns: data.breakdowns,
@@ -624,6 +630,54 @@ class ReportsService {
       return { success: false, error: 'Backend disabled' };
     } catch (error) {
       console.error('❌ Get org analytics critical error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // ======== GET TRAINER EVENTS (My Events) ========
+  async getMyEvents(status = 'published') {
+    try {
+      const token = await authService.getAccessToken();
+      if (!token) {
+        return { success: false, error: 'User not authenticated. Please login again.' };
+      }
+
+      if (this.useBackend) {
+        try {
+          console.log(`📡 Fetching my events from: ${API_BASE_URL}/events/my-events?status=${status}`);
+
+          const response = await this.authenticatedFetch(`${API_BASE_URL}/events/my-events?status=${status}`, {
+            method: 'GET',
+          });
+
+          const text = await response.text();
+          let data;
+          try {
+            data = JSON.parse(text);
+          } catch (jsonError) {
+            console.error('❌ Failed to parse JSON:', text.substring(0, 200));
+            return { success: false, error: 'Server returned invalid response (possibly HTML error)' };
+          }
+
+          if (response.ok) { // Backend returns events directly in data.events
+            console.log(`✅ Fetched ${data.events ? data.events.length : 0} events from cloud.`);
+            return { success: true, events: data.events || [] };
+          } else {
+            console.error('❌ Fetch my events failed:', data.message);
+            return { success: false, error: data.message || 'Failed to fetch events' };
+          }
+
+        } catch (error) {
+          console.error('❌ Fetch my events error:', error);
+          if (error.message && error.message.includes('No access token')) {
+            return { success: false, error: 'Session expired. Please login again.' };
+          }
+          return { success: false, error: error.message };
+        }
+      }
+      return { success: false, error: 'Backend disabled' };
+    } catch (error) {
+      console.error('❌ getMyEvents global error:', error);
       return { success: false, error: error.message };
     }
   }

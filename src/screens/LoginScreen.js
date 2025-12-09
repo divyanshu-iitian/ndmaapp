@@ -137,6 +137,26 @@ const AuthScreen = ({ navigation }) => {
           // For trainee login, we use phone as email (backend accepts phone as password initially)
           const result = await MongoDBService.loginUser(phone, password);
           if (result.success) {
+            // Check if account requires verification
+            if (result.requiresVerification) {
+              Alert.alert(
+                'Account Verification Required',
+                'Your account is pending verification. Please wait for approval.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      navigation.navigate('VerificationPending', {
+                        verificationStatus: result.verificationStatus || 'pending',
+                        notes: result.notes || ''
+                      });
+                    }
+                  }
+                ]
+              );
+              return;
+            }
+
             if (__DEV__) console.log('Trainee login successful, user data:', result.user);
             
             // Save both access and refresh tokens
@@ -225,6 +245,45 @@ const AuthScreen = ({ navigation }) => {
           if (result.success) {
             if (__DEV__) console.log('Trainee registration successful, user data:', result.user);
             
+            // Check if verification is required
+            if (result.next === 'pending') {
+              // Account needs admin approval
+              Alert.alert(
+                'Account Under Review',
+                'Your account has been created and is pending verification. You will be notified once approved.',
+                [
+                  { 
+                    text: 'OK', 
+                    onPress: () => {
+                      navigation.navigate('VerificationPending', {
+                        verificationStatus: 'pending',
+                        notes: ''
+                      });
+                    }
+                  }
+                ]
+              );
+              return;
+            } else if (result.next === 'verify') {
+              // Email OTP verification required
+              Alert.alert(
+                'Verify Your Email',
+                'A verification code has been sent to your email.',
+                [
+                  { 
+                    text: 'OK', 
+                    onPress: () => {
+                      navigation.navigate('OTPVerification', {
+                        email: email
+                      });
+                    }
+                  }
+                ]
+              );
+              return;
+            }
+            
+            // Legacy flow - auto-approved trainees
             // Save both access and refresh tokens
             if (result.accessToken && result.refreshToken) {
               await AsyncStorage.setItem('accessToken', result.accessToken);
@@ -297,6 +356,26 @@ const AuthScreen = ({ navigation }) => {
       if (isLogin) {
         const result = await MongoDBService.loginUser(email, password);
         if (result.success) {
+          // Check if account requires verification
+          if (result.requiresVerification) {
+            Alert.alert(
+              'Account Verification Required',
+              'Your account is pending verification. Please wait for approval.',
+              [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    navigation.navigate('VerificationPending', {
+                      verificationStatus: result.verificationStatus || 'pending',
+                      notes: result.notes || ''
+                    });
+                  }
+                }
+              ]
+            );
+            return;
+          }
+
           if (__DEV__) console.log('Login successful, user data:', result.user);
           
           // Save both access and refresh tokens
@@ -359,6 +438,45 @@ const AuthScreen = ({ navigation }) => {
         if (result.success) {
           if (__DEV__) console.log('Trainer/Authority registration successful, user data:', result.user);
           
+          // Check if verification is required
+          if (result.next === 'pending') {
+            // Account needs admin approval
+            Alert.alert(
+              'Account Under Review',
+              'Your account has been created and is pending verification. You will be notified once approved.',
+              [
+                { 
+                  text: 'OK', 
+                  onPress: () => {
+                    navigation.navigate('VerificationPending', {
+                      verificationStatus: 'pending',
+                      notes: ''
+                    });
+                  }
+                }
+              ]
+            );
+            return;
+          } else if (result.next === 'verify') {
+            // Email OTP verification required
+            Alert.alert(
+              'Verify Your Email',
+              'A verification code has been sent to your email.',
+              [
+                { 
+                  text: 'OK', 
+                  onPress: () => {
+                    navigation.navigate('OTPVerification', {
+                      email: email
+                    });
+                  }
+                }
+              ]
+            );
+            return;
+          }
+          
+          // Legacy flow - auto-approved users
           // Save both access and refresh tokens
           if (result.accessToken && result.refreshToken) {
             await AsyncStorage.setItem('accessToken', result.accessToken);
